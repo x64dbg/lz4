@@ -1,0 +1,6 @@
+bin/
+Release/
+ipch/
+*.sdf
+*.suo
+*.opensdf
