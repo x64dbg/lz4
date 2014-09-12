@@ -76,7 +76,6 @@ static const int one = 1;
 #define CPU_BIG_ENDIAN (!CPU_LITTLE_ENDIAN)
 #define LITTLE_ENDIAN32(i)   if (CPU_BIG_ENDIAN) { i = swap32(i); }
 
-
 static LZ4_STATUS get_fileHandle(const char* input_filename, const char* output_filename, FILE** pfinput, FILE** pfoutput)
 {
     if(fopen_s(pfinput, input_filename, "rb"))
@@ -86,6 +85,14 @@ static LZ4_STATUS get_fileHandle(const char* input_filename, const char* output_
     return LZ4_SUCCESS;
 }
 
+static LZ4_STATUS get_fileHandleW(const wchar_t* input_filename, const wchar_t* output_filename, FILE** pfinput, FILE** pfoutput)
+{
+	if(_wfopen_s(pfinput, input_filename, L"rb"))
+		return LZ4_FAILED_OPEN_INPUT;
+	if(_wfopen_s(pfoutput, output_filename, L"wb"))
+		return LZ4_FAILED_OPEN_OUTPUT;
+	return LZ4_SUCCESS;
+}
 
 LZ4_STATUS LZ4_compress_file(const char* input_filename, const char* output_filename)
 {
@@ -102,7 +109,7 @@ LZ4_STATUS LZ4_compress_file(const char* input_filename, const char* output_file
     if(!_stricmp(input_filename, output_filename))
     {
         output=real_output;
-        sprintf(output, "temp_%X.lz4", GetTickCount());
+        sprintf_s(real_output, "temp_%X.lz4", GetTickCount());
     }
 
     r = get_fileHandle(input_filename, output, &finput, &foutput);
@@ -169,6 +176,88 @@ LZ4_STATUS LZ4_compress_file(const char* input_filename, const char* output_file
     return LZ4_SUCCESS;
 }
 
+LZ4_STATUS LZ4_compress_fileW(const wchar_t* input_filename, const wchar_t* output_filename)
+{
+	unsigned long long filesize = 0;
+	unsigned long long compressedfilesize = ARCHIVE_MAGICNUMBER_SIZE;
+	unsigned int u32var;
+	char* in_buff;
+	char* out_buff;
+	FILE* finput;
+	FILE* foutput;
+	LZ4_STATUS r;
+	wchar_t real_output[MAX_PATH]=L"";
+	const wchar_t* output=output_filename;
+	if(!_wcsicmp(input_filename, output_filename))
+	{
+		output=real_output;
+		swprintf_s(real_output, sizeof(real_output),  L"temp_%X.lz4", GetTickCount());
+	}
+
+	r = get_fileHandleW(input_filename, output, &finput, &foutput);
+	if (r!=LZ4_SUCCESS)
+	{
+		DeleteFileW(output);
+		return r;
+	}
+
+	// Allocate Memory
+	in_buff = (char*)malloc(CHUNKSIZE);
+	out_buff = (char*)malloc(LZ4_compressBound(CHUNKSIZE));
+	if (!in_buff || !out_buff)
+	{
+		if(in_buff)
+			free(in_buff);
+		if(out_buff)
+			free(out_buff);
+		fclose(finput);
+		fclose(foutput);
+		DeleteFileW(output);
+		return LZ4_NOT_ENOUGH_MEMORY;
+	}
+
+	// Write Archive Header
+	u32var = ARCHIVE_MAGICNUMBER;
+	LITTLE_ENDIAN32(u32var);
+	*(unsigned int*)out_buff = u32var;
+	fwrite(out_buff, 1, ARCHIVE_MAGICNUMBER_SIZE, foutput);
+
+	// Main Loop
+	while (1)
+	{
+		int outSize;
+		// Read Block
+		int inSize = fread(in_buff, 1, CHUNKSIZE, finput);
+		if( inSize<=0 )
+			break;
+		filesize += inSize;
+
+		// Compress Block
+		outSize = LZ4_compress(in_buff, out_buff+4, inSize);
+		compressedfilesize += outSize+4;
+
+		// Write Block
+		LITTLE_ENDIAN32(outSize);
+		* (unsigned int*) out_buff = outSize;
+		LITTLE_ENDIAN32(outSize);
+		fwrite(out_buff, 1, outSize+4, foutput);
+	}
+
+	// Close & Free
+	free(in_buff);
+	free(out_buff);
+	fclose(finput);
+	fclose(foutput);
+
+	if(output!=output_filename)
+	{
+		DeleteFileW(output_filename);
+		MoveFileW(output, output_filename);
+	}
+
+	return LZ4_SUCCESS;
+}
+
 LZ4_STATUS LZ4_decompress_file(const char* input_filename, const char* output_filename)
 {
     unsigned long long filesize = 0;
@@ -186,7 +275,7 @@ LZ4_STATUS LZ4_decompress_file(const char* input_filename, const char* output_fi
     if(!_stricmp(input_filename, output_filename))
     {
         output=real_output;
-        sprintf(output, "temp_%X.lz4", GetTickCount());
+        sprintf_s(real_output, "temp_%X.lz4", GetTickCount());
     }
 
     r = get_fileHandle(input_filename, output, &finput, &foutput);
@@ -279,4 +368,116 @@ LZ4_STATUS LZ4_decompress_file(const char* input_filename, const char* output_fi
     }
 
     return LZ4_SUCCESS;
+}
+
+LZ4_STATUS LZ4_decompress_fileW(const wchar_t* input_filename, const wchar_t* output_filename)
+{
+	unsigned long long filesize = 0;
+	char* in_buff;
+	char* out_buff;
+	size_t uselessRet;
+	int sinkint;
+	unsigned int nextSize;
+	FILE* finput;
+	FILE* foutput;
+	LZ4_STATUS r;
+
+	wchar_t real_output[MAX_PATH]=L"";
+	const wchar_t* output=output_filename;
+	if(!_wcsicmp(input_filename, output_filename))
+	{
+		output=real_output;
+		swprintf_s(real_output, sizeof(real_output), L"temp_%X.lz4", GetTickCount());
+	}
+
+	r = get_fileHandleW(input_filename, output, &finput, &foutput);
+	if (r!=LZ4_SUCCESS)
+	{
+		DeleteFileW(output);
+		return r;
+	}
+
+	// Allocate Memory
+	in_buff = (char*)malloc(LZ4_compressBound(CHUNKSIZE));
+	out_buff = (char*)malloc(CHUNKSIZE);
+	if (!in_buff || !out_buff)
+	{
+		if(in_buff)
+			free(in_buff);
+		if(out_buff)
+			free(out_buff);
+		fclose(finput);
+		fclose(foutput);
+		DeleteFileW(output);
+		return LZ4_NOT_ENOUGH_MEMORY;
+	}
+
+	// Check Archive Header
+	uselessRet = fread(out_buff, 1, ARCHIVE_MAGICNUMBER_SIZE, finput);
+	nextSize = *(unsigned int*)out_buff;
+	LITTLE_ENDIAN32(nextSize);
+	if (nextSize != ARCHIVE_MAGICNUMBER)
+	{
+		free(in_buff);
+		free(out_buff);
+		fclose(finput);
+		fclose(foutput);
+		DeleteFileW(output);
+		return LZ4_INVALID_ARCHIVE;
+	}
+
+	// First Block
+	*(unsigned int*)in_buff = 0;
+	uselessRet = fread(in_buff, 1, 4, finput);
+	nextSize = *(unsigned int*)in_buff;
+	LITTLE_ENDIAN32(nextSize);
+
+	// Main Loop
+	while (1)
+	{
+		// Read Block
+		uselessRet = fread(in_buff, 1, nextSize, finput);
+
+		// Check Next Block
+		uselessRet = (size_t) fread(&nextSize, 1, 4, finput);
+		if( uselessRet==0 )
+			break;   // Nothing read : file read is completed
+		LITTLE_ENDIAN32(nextSize);
+
+		// Decode Block
+		sinkint = LZ4_uncompress(in_buff, out_buff, CHUNKSIZE);
+		if (sinkint < 0)
+		{
+			free(in_buff);
+			free(out_buff);
+			fclose(finput);
+			fclose(foutput);
+			DeleteFileW(output);
+			return LZ4_CORRUPTED_ARCHIVE;
+		}
+		filesize += CHUNKSIZE;
+
+		// Write Block
+		fwrite(out_buff, 1, CHUNKSIZE, foutput);
+	}
+
+	// Last Block (which size is <= CHUNKSIZE, but let LZ4 figure that out)
+	uselessRet = fread(in_buff, 1, nextSize, finput);
+	sinkint = LZ4_uncompress_unknownOutputSize(in_buff, out_buff, nextSize, CHUNKSIZE);
+	filesize += sinkint;
+	fwrite(out_buff, 1, sinkint, foutput);
+
+	// Close & Free
+	free(in_buff);
+	free(out_buff);
+	fclose(finput);
+	fclose(foutput);
+
+	if(output!=output_filename)
+	{
+		DeleteFileW(output_filename);
+		MoveFileW(output, output_filename);
+	}
+
+	return LZ4_SUCCESS;
 }

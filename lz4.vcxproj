@@ -10,6 +10,16 @@
       <Platform>x64</Platform>
     </ProjectConfiguration>
   </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="lz4.c" />
+    <ClCompile Include="lz4file.cpp" />
+    <ClCompile Include="lz4hc.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="lz4.h" />
+    <ClInclude Include="lz4file.h" />
+    <ClInclude Include="lz4hc.h" />
+  </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGUID>{F777740F-AD17-49E5-BE51-D1D56DC2FA33}</ProjectGUID>
     <Keyword>Win32Proj</Keyword>
@@ -137,14 +147,6 @@
       <LinkLibraryDependencies>false</LinkLibraryDependencies>
     </ProjectReference>
   </ItemDefinitionGroup>
-  <ItemGroup>
-    <ClInclude Include="..\lz4.h" />
-    <ClInclude Include="..\lz4file.h" />
-    <ClInclude Include="..\lz4hc.h" />
-    <ClCompile Include="..\lz4.c" />
-    <ClCompile Include="..\lz4file.cpp" />
-    <ClCompile Include="..\lz4hc.c" />
-  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
